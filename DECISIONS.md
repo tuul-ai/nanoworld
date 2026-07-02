@@ -15,3 +15,11 @@ here (and in the deck colophon where relevant); nothing ships against an unresol
 | D8 | nano_genie codebook: copy 8 vs reduced-size {4,8,16} sweep | 59 | OPEN (default: no full-size sweep) |
 | D9 | learner-aggregate annotation ratings backend write path | 56 | OPEN (v1 fallback: author-reference-only) |
 | D10 | mobile tier for heavy labs | Phase 0 gate | **RESOLVED 2026-07-02 (Shreyas):** Tier 2 labs are desktop-only; on touch/small viewports each shows a poster video + "open on desktop", never a broken canvas. Module list + palette + satellite schema confirmed at the same gate. |
+
+## Gate rulings
+
+- **M1.e never-loses gate (2026-07-02, Shreyas):** the 18/200 losses-to-random tail is
+  ACCEPTED as course content (option a). The other four gates pass (arena net +23 vs
+  mirror +4; root value +0.087; oracle 20/20; falsifier +33 vs +17). The tail is
+  characterized in nano_muzero/README.md + experiments.md and feeds the 1.8 lab's
+  hallucination finder. Phase 1 code gate signed off; deck authoring unlocked (PR #1).
