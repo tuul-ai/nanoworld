@@ -14,4 +14,4 @@ here (and in the deck colophon where relevant); nothing ships against an unresol
 | D7 | bridge-module placement (after M4 vs after M1) | 64 | OPEN |
 | D8 | nano_genie codebook: copy 8 vs reduced-size {4,8,16} sweep | 59 | OPEN (default: no full-size sweep) |
 | D9 | learner-aggregate annotation ratings backend write path | 56 | OPEN (v1 fallback: author-reference-only) |
-| D10 | mobile tier for heavy labs | Phase 0 gate | OPEN (recommendation: desktop-only Tier 2 + poster fallback) |
+| D10 | mobile tier for heavy labs | Phase 0 gate | **RESOLVED 2026-07-02 (Shreyas):** Tier 2 labs are desktop-only; on touch/small viewports each shows a poster video + "open on desktop", never a broken canvas. Module list + palette + satellite schema confirmed at the same gate. |
