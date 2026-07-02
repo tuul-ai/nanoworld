@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from envs.tictactoe import TicTacToe  # noqa: E402
+from nano_muzero.baseline import AlphaZeroNet  # noqa: E402
 from nano_muzero.model import MuZeroNet  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "export" / "out"
@@ -87,6 +88,18 @@ def export_muzero(args):
         wpath = out / f"weights_{name}.json"
         wpath.write_text(json.dumps(weights_payload(net, cfg)))
         written.append(wpath)
+
+    # the capstone net too: the 1.8 lab's TRUE-search side runs it in the browser
+    cap_ckpt = REPO_ROOT / "data" / "ckpts" / "ttt_capstone.pt"
+    if cap_ckpt.exists():
+        payload = torch.load(cap_ckpt, map_location="cpu", weights_only=False)
+        cap = AlphaZeroNet(hidden=payload["extra"]["hidden"])
+        cap.load_state_dict(payload["model"])
+        cap_cfg = {"obs_dim": 18, "hidden": payload["extra"]["hidden"], "n_actions": 9}
+        (out / "weights_capstone.json").write_text(json.dumps(
+            {"config": cap_cfg, "params": {k: {"shape": list(v.shape), "data": v.detach().float().flatten().tolist()}
+                                            for k, v in cap.state_dict().items()}}))
+        written.append(out / "weights_capstone.json")
 
     # CI fixture pair: weights + golden vectors from the FINAL net
     net, cfg = load_muzero(args.ckpt)

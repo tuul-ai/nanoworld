@@ -85,3 +85,20 @@ export class MuZeroJS {
     return { s: sNext, r, ...this.predict(sNext) };
   }
 }
+
+export class AlphaZeroJS {
+  /* The capstone's two-headed net (baseline.py AlphaZeroNet): the TRUE search's oracle
+   * in the 1.8 lab. weightsJson = {config: {obs_dim, hidden, n_actions}, params}. */
+  constructor(weightsJson) {
+    this.cfg = weightsJson.config;
+    this.p = weightsJson.params;
+  }
+
+  forward(obs) {
+    // trunk (Linear,ReLU,Linear,ReLU) -> policy (Linear) + value (Linear,Tanh)
+    const t = mlpForward(obs, this.p, "trunk", { hidden: 1, outAct: "relu" });
+    const logits = mlpForward(t, this.p, "policy_head", { hidden: 0 });
+    const v = mlpForward(t, this.p, "value_head", { hidden: 0, outAct: "tanh" })[0];
+    return { logits, v };
+  }
+}
