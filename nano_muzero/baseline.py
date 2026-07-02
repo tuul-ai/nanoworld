@@ -212,6 +212,17 @@ def validate_replay(path: Path):
     assert data["obs"].shape == (n, 2, 3, 3) and data["pi"].shape == (n, 9)
     assert np.allclose(data["pi"].sum(1), 1.0, atol=1e-5), "pi rows must sum to 1"
     assert set(np.unique(data["z"])) <= {-1.0, 0.0, 1.0}, "z must be -1/0/+1 from mover's view"
+    # window samplers assume sorted game ids, contiguous games, in-game move order, and that
+    # every game's LAST stored action actually ends it (the terminal transition pays u = z)
+    gid, midx = data["game_id"], data["move_idx"]
+    assert (np.diff(gid) >= 0).all(), "game_id must be sorted (games contiguous)"
+    starts = np.flatnonzero(np.r_[True, np.diff(gid) != 0])
+    ends = np.r_[starts[1:], n]
+    for s_, e_ in zip(starts, ends):
+        assert (midx[s_:e_] == np.arange(e_ - s_)).all(), f"move_idx broken in game {gid[s_]}"
+        last = tuple(int(c) for c in data["board"][e_ - 1])
+        final = game.apply(last, int(data["action"][e_ - 1]))
+        assert game.is_terminal(final), f"game {gid[s_]} does not end with its last action"
     for i in range(n):
         board = tuple(int(c) for c in data["board"][i])
         assert game.to_play(board) == data["to_play"][i], f"row {i}: to_play mismatch"
