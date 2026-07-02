@@ -68,15 +68,32 @@ is a deck convention and appears there as a labeled aside.
 
 ## Milestone ladder
 
-| milestone | what runs | gate |
-|---|---|---|
-| M1.a | `baseline.py`: capstone re-run + frozen replay | never-loses; replay schema test |
-| M1.b | `model.py`: h/g/f | shape + NaN-free unroll tests |
-| M1.c | `mcts.py`: latent MCTS + oracle harness | move-for-move match with capstone MCTS |
-| M1.d | `train.py` offline on the frozen replay | losses fall; probe + drift curves |
-| M1.e | full self-play loop | arena parity with M1.a |
-| M1.f | `--reanalyze` under constrained data | seeded comparison table |
-| M1.g | break-it suite, `--noisy` env | experiments table |
+| milestone | what runs | gate | status |
+|---|---|---|---|
+| M1.a | `baseline.py`: capstone re-run + frozen replay | never-loses; replay schema test | PASS (192W/8D/0L) |
+| M1.b | `model.py`: h/g/f | shape + NaN-free unroll tests | PASS |
+| M1.c | `mcts.py`: latent MCTS + oracle harness | move-for-move match with capstone MCTS | PASS, stronger than promised: EXACT root visit-count vectors, 20/20 |
+| M1.d | `train.py --offline` on the frozen replay | losses fall; probe + drift curves | PASS |
+| M1.e | full self-play loop (`--full`) | arena parity with M1.a | see `eval.py` gates |
+| M1.f | `--reanalyze` under constrained data | seeded comparison table | see experiments.md |
+| M1.g | break-it suite, `--noisy` env | experiments table | see experiments.md |
+
+Measured highlights (all reproducible with the commands above, seeds printed):
+
+- **Oracle harness (M1.c):** with min-max normalization off and the capstone's constants,
+  the latent search over true dynamics produces bit-identical root visit vectors to the
+  capstone MCTS on all 20 fixed positions (`python -m nano_muzero.oracle`). With MuZero's
+  own c1/c2 + min-max normalization the same positions agree on 17/20 moves at 200 sims:
+  the normalizer legitimately trades low-sim tactical sharpness for reward-scale freedom.
+- **Unroll drift (M1.d, the argument for K-step training):** teacher-forced value error at
+  depth 6-7 is 0.56-0.59 for the K=1-trained model vs 0.11-0.27 for K=5
+  (`python -m nano_muzero.eval_drift`, exported to `data/eval/drift_curves.json`).
+- **Value equivalence, measured (M1.d):** a linear probe decodes board occupancy from
+  frozen latents at 0.930 accuracy (by accident) while the value head reads the same
+  latents at 0.991 sign accuracy (by construction). Adding a reconstruction loss
+  (`--recon on`) pushes occupancy to 0.978 and buys zero value accuracy. Killing the
+  value+reward losses (`--ablate-value`) collapses value sign accuracy to 0.568 while
+  occupancy persists at 0.927 (`python -m nano_muzero.probe`, experiments.md).
 
 *90% of nano_muzero bugs are target misalignment: an off-by-one between pi_{t+k} / z_{t+k} /
 u_{t+k} and the k-th unroll head. The oracle harness (M1.c) is how you notice.*
