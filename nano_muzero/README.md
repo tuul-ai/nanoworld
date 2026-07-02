@@ -74,9 +74,30 @@ is a deck convention and appears there as a labeled aside.
 | M1.b | `model.py`: h/g/f | shape + NaN-free unroll tests | PASS |
 | M1.c | `mcts.py`: latent MCTS + oracle harness | move-for-move match with capstone MCTS | PASS, stronger than promised: EXACT root visit-count vectors, 20/20 |
 | M1.d | `train.py --offline` on the frozen replay | losses fall; probe + drift curves | PASS |
-| M1.e | full self-play loop (`--full`) | arena parity with M1.a | see `eval.py` gates |
-| M1.f | `--reanalyze` under constrained data | seeded comparison table | see experiments.md |
-| M1.g | break-it suite, `--noisy` env | experiments table | see experiments.md |
+| M1.e | full self-play loop (`--full`) | arena parity with M1.a | 4/5 gates PASS (below) |
+| M1.f | `--reanalyze` under constrained data | seeded comparison table | measured, sign FLIPPED (experiments.md) |
+| M1.g | break-it suite, `--noisy` env | experiments table | measured (experiments.md) |
+
+The shipped checkpoint (`data/ckpts/muzero_selfplay.pt`, recipe in its run manifest:
+warm-start from M1.d + mild noise 0.1 + `--mix-replay` + `--vs-random-frac 0.3`) gates at
+200 sims as: **arena vs capstone 33W 57D 10L, net +23 against a mirror baseline of +4**
+(superiority, not just parity; at 50 sims it concedes ZERO losses in 100 games), empty-board
+root value +0.087, oracle harness 20/20, search beats its own raw policy vs the capstone
+(+33 vs +17). The one red gate: 18/200 losses to a uniform-random mover -- 17 of them as O,
+all one-ply blocking misses in off-distribution corner openings; scaling vs-random data 30%
+-> 50% did not shrink the tail (19/200). Model-blind-spot losses to weak opponents are, so
+far, the honest price of planning inside a learned simulator at this scale; the 1.8 lab's
+hallucination finder exists to let you inspect exactly these.
+
+Getting here required un-learning a delusion, and the story ships with the module: pure
+noisy self-play converges to "X always wins" (38/40 X wins in its own games, empty-board
+value +0.6) because -- unlike your capstone, whose true-rules search injects tactical truth
+no matter how bad the net is -- MuZero's search can only be as honest as its model. Fully
+cooled self-play calibrates perfectly (+0.001) and then loses to random 72/200 from pure
+coverage starvation. The working recipe anchors on the frozen M1.a replay (MuZero
+Unplugged's offline lesson) and seeds off-policy coverage games. Sims-budget crossover,
+measured: the offline model BEATS the capstone at matched 50-sim search (+36 net) and loses
+at 200 (-29) -- the paper's Fig. 3 Atari plateau, reproduced on a 3x3 board.
 
 Measured highlights (all reproducible with the commands above, seeds printed):
 
