@@ -20,6 +20,9 @@ python -m nano_muzero.eval --ckpt data/ckpts/muzero_selfplay.pt   --gates full  
   and scene 1.5's "train through the composition" beat is theater.
 - **Ours (offline drift, |v^k - z|, 50 positions):** K=1 hits 0.56-0.59 at depths 6-7 where
   K=5 stays 0.11-0.27 (see `data/eval/drift_curves.json`).
+- **Ours (self-play, identical recipe, only K changed):** K=5 nets +23 vs the capstone;
+  K=1 nets **-63**, and its own search HURTS it (falsifier: mcts net -63 vs raw policy -4).
+  Planning deep inside a model trained one step at a time is worse than not planning.
 
 ## (M1.f) Reanalyze under constrained data: measured, sign flipped
 
@@ -70,7 +73,7 @@ python -m nano_muzero.probe
 
 | experiment | metric | clean/K=5 reference | broken run |
 |---|---|---|---|
-| (a) K=1 | drift at depth 6 | 0.265 | 0.564 |
+| (a) K=1 | drift at depth 6; arena net | 0.265; +23 | 0.564; -63 (search hurts: -63 vs raw -4) |
 | (b) noisy | mean \|v0 - z\| on own cooled games | 0.189 (47/50 draws) | 0.364 (env p=0.1; determinism learns a blur) |
 | (c) value-blind | probe value sign acc | 0.991 | 0.568 (occupancy stays 0.927) |
 | (M1.f) reanalyze @ 200-game cap | arena net vs capstone | -12 (off) | -55 (on: echo chamber) |
