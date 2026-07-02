@@ -1,0 +1,24 @@
+[project]
+name = "nanoworld"
+version = "0.1.0"
+description = "The nanoGPT of world models: nano_muzero, nano_dreamer, nano_jepa, nano_genie"
+requires-python = ">=3.10"
+dependencies = ["torch", "numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "jsonschema"]
+sim = ["mujoco==3.10.0", "imageio", "imageio-ffmpeg"]
+data = ["huggingface_hub", "pyarrow"]
+export = ["onnx", "onnxruntime"]
+modal = ["modal"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["shared", "envs", "data", "nano_muzero", "nano_dreamer", "nano_jepa", "nano_genie", "export"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["smoke: smoke-train tests, run before any Modal spend"]

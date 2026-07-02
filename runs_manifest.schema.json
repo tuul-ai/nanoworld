@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tuul-ai/nanoworld/runs_manifest.schema.json",
+  "title": "nanoworld run manifest",
+  "description": "Written to runs/<id>/manifest.json for every training/data run. Any number the course deck quotes as 'our measurement' must reference one of these.",
+  "type": "object",
+  "required": ["run_id", "module", "config_hash", "seed", "gpu_type", "created"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string", "description": "Directory name under runs/" },
+    "module": {
+      "type": "string",
+      "enum": ["shared", "envs", "data", "nano_muzero", "nano_dreamer", "nano_jepa", "nano_jepa_ac", "nano_genie"]
+    },
+    "phase": { "type": "integer", "minimum": 0, "maximum": 5, "description": "Course build phase that paid for the run" },
+    "created": { "type": "string", "format": "date-time" },
+    "dataset_revision_sha": {
+      "type": ["string", "null"],
+      "description": "Revision SHA of the dataset consumed (HF revision for HIW-500, git SHA of the recorder for sim data); null for synthetic/self-play data"
+    },
+    "config_hash": { "type": "string", "description": "sha256 of the resolved run config JSON" },
+    "config": { "type": "object", "description": "The resolved config itself, for humans" },
+    "seed": { "type": "integer" },
+    "modal_run_id": { "type": ["string", "null"], "description": "Modal app run id; null for local Mac runs" },
+    "gpu_type": { "type": "string", "description": "e.g. a10g, a100-40gb, cpu, mps" },
+    "wall_hours": { "type": ["number", "null"], "description": "Measured wall-clock hours" },
+    "actual_usd": { "type": ["number", "null"], "description": "Actual $ from the Modal dashboard; must also land in BUDGET.md" },
+    "artifacts": {
+      "type": "array",
+      "description": "Every artifact the run produced that anything downstream consumes",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "exported_browser_files": {
+      "type": "array",
+      "description": "Files copied into the course deck's asset dir by export/to_browser.py",
+      "items": { "type": "string" }
+    },
+    "deck_metrics": {
+      "type": "object",
+      "description": "Every number this run contributes to the course deck, keyed by claim id in courses/worldmodels/claims.json",
+      "additionalProperties": { "type": ["number", "string", "array", "object"] }
+    },
+    "eval_seed_set": { "type": ["string", "null"], "description": "Named fixed seed set used for reported numbers, e.g. 'arena 0..19', 'eval episodes 0..49'" },
+    "notes": { "type": "string" }
+  }
+}

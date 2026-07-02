@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+runs/
+data_cache/
+sample_review/
+*.onnx
+*.pt
+*.ckpt
+*.npz
+!tests/fixtures/*.npz
+export/out/
+weights*.json
+*.egg-info/
+.DS_Store
