@@ -40,12 +40,16 @@ def mcts_mover(adapter, game, n_sims):
 
 
 def raw_policy_mover(net, game):
-    def move(s):
+    def move(s, counts=False):
         with torch.no_grad():
             _, logits, _ = net.initial(torch.from_numpy(game.encode(s)).unsqueeze(0))
         masked = np.full(9, -np.inf)
         legal = game.legal_moves(s)
         masked[legal] = logits[0].numpy()[legal]
+        if counts:  # masked softmax doubles as the opening distribution
+            e = np.exp(masked - masked[legal].max())
+            e[np.isinf(masked)] = 0.0
+            return e
         return int(np.argmax(masked))
     return move
 
@@ -126,15 +130,19 @@ def main(argv=None):
     exact = sum(bool(np.array_equal(c, m)) for _, c, m in rows)
     results["4 oracle harness"] = (f"{exact}/{len(rows)} exact visit vectors", exact == len(rows))
 
-    # falsifier: search > raw policy, arena seeds 0..19 (5 games per seed, points = 2W + D)
-    pts = {"mcts": 0, "raw": 0}
+    # falsifier: search must beat the raw policy head AGAINST THE CAPSTONE (seeds 0..19,
+    # 20 x 5 sampled-opening games each). Vs a random opponent a fully-amortized policy
+    # legitimately ties its own search, so that comparison stops discriminating exactly
+    # when training succeeds; against a strong opponent, search advantage still binds.
+    net_score = {"mcts": 0, "raw": 0}
     raw = raw_policy_mover(net, game)
     for seed in range(20):
         for name, mover in (("mcts", nano), ("raw", raw)):
-            w, d, l = arena(game, mover, random_mover(game, np.random.default_rng(seed)), 5)
-            pts[name] += 2 * w + d
-    results["F falsifier: MCTS > raw policy (seeds 0..19)"] = (
-        f"mcts {pts['mcts']} vs raw {pts['raw']} points", pts["mcts"] > pts["raw"])
+            w, d, l = arena(game, mover, cap, 5, opening_rng=np.random.default_rng(seed))
+            net_score[name] += w - l
+    results["F falsifier: MCTS > raw policy, vs capstone (seeds 0..19)"] = (
+        f"mcts net {net_score['mcts']:+d} vs raw net {net_score['raw']:+d}",
+        net_score["mcts"] > net_score["raw"])
 
     print(f"nano_muzero gates ({args.ckpt}, {args.eval_sims} sims)")
     print("| gate | result | pass |\n|---|---|---|")

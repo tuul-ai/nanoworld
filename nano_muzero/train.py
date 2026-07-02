@@ -195,16 +195,24 @@ def train_offline(args):
 
 
 # ---------------------------------------------------------- M1.e: the flywheel, box swapped
-def selfplay_game(game, adapter, mcts_cfg, rng, temp_plies: int = 2):
+def selfplay_game(game, adapter, mcts_cfg, rng, temp_plies: int = 2, noise: bool = True):
     """One self-play game, the capstone's play_game with the search living in latent space.
     Only two arrows touch reality: acting (the REAL game adjudicates each move) and the
-    final outcome. Everything inside the search is imagined."""
+    final outcome. Everything inside the search is imagined.
+
+    `noise=False` is the late-training regime (see train_full): openings still sample from
+    the visit distribution for diversity, but the search plays its honest best after. In an
+    AlphaZero loop the true-rules search injects tactical truth no matter how noisy the
+    games are; here the model IS the search's world, so a buffer full of noise-blundered
+    games teaches a delusional value head ('X always wins') that the search then amplifies.
+    Cooling exploration lets the data distribution converge to best play."""
     from nano_muzero.mcts import run_mcts
 
     s, ply, records = game.initial_state(), 0, []
     while not game.is_terminal(s):
         obs = game.encode(s)
-        counts, _ = run_mcts(adapter, obs, game.legal_moves(s), mcts_cfg, noise_rng=rng)
+        counts, _ = run_mcts(adapter, obs, game.legal_moves(s), mcts_cfg,
+                             noise_rng=rng if noise else None)
         pi = counts / counts.sum()
         a = int(rng.choice(game.n_actions, p=pi)) if ply < temp_plies else int(np.argmax(counts))
         records.append(dict(board=s, to_play=game.to_play(s), obs=obs, pi=pi, action=a))
@@ -214,6 +222,34 @@ def selfplay_game(game, adapter, mcts_cfg, rng, temp_plies: int = 2):
     for i, r in enumerate(records):
         r["z"] = float(z * r["to_play"])
         r["u"] = r["z"] if i == len(records) - 1 else 0.0  # the ending move pays its mover
+    return records
+
+
+def vs_random_game(game, adapter, mcts_cfg, rng):
+    """Coverage diet for the buffer: one side is a uniform-random mover. The search still
+    runs at EVERY position and its counts are stored as the pi target (search-minted
+    targets on an off-policy trajectory, the same logic as Reanalyze); only the ACTION
+    follows the random mover on its plies. z/u record what truly happens when someone
+    blunders -- the punishment lessons pure self-play never contains, because a strong
+    self-player never visits those positions."""
+    from nano_muzero.mcts import run_mcts
+
+    nano_player = rng.choice([+1, -1])
+    s, records = game.initial_state(), []
+    while not game.is_terminal(s):
+        obs = game.encode(s)
+        counts, _ = run_mcts(adapter, obs, game.legal_moves(s), mcts_cfg)
+        if game.to_play(s) == nano_player:
+            a = int(np.argmax(counts))
+        else:
+            a = int(rng.choice(game.legal_moves(s)))
+        records.append(dict(board=s, to_play=game.to_play(s), obs=obs,
+                            pi=counts / counts.sum(), action=a))
+        s = game.apply(s, a)
+    z = game.winner(s)
+    for i, r in enumerate(records):
+        r["z"] = float(z * r["to_play"])
+        r["u"] = r["z"] if i == len(records) - 1 else 0.0
     return records
 
 
@@ -278,9 +314,10 @@ def train_full(args):
         net.load_state_dict(payload["model"])
         print(f"warm-started from {args.init_from}")
     adapter = NetAdapter(net)
-    mcts_cfg = MCTSConfig(n_sims=args.sims)
+    mcts_cfg = MCTSConfig(n_sims=args.sims, noise_frac=args.noise_frac)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
     buffer = GameBuffer(args.buffer_games)
+    frozen = ReplayWindows(args.replay, args.unroll) if args.mix_replay else None
     run_dir = new_run_dir("muzero-full")
     latest = REPO_ROOT / "runs" / "latest"
     latest.unlink(missing_ok=True)
@@ -298,14 +335,25 @@ def train_full(args):
                              "unroll": args.unroll, "phase": "selfplay-snapshot"})
         if buffer.total_games < args.games_cap:
             n_new = min(args.games_per_iter, args.games_cap - buffer.total_games)
-            for _ in range(n_new):
-                buffer.add(selfplay_game(game, adapter, mcts_cfg, rng))
+            explore = it < int(args.iters * args.explore_frac)
+            n_vs_random = int(n_new * args.vs_random_frac)
+            for _ in range(n_vs_random):
+                buffer.add(vs_random_game(game, adapter, mcts_cfg, rng))
+            for _ in range(n_new - n_vs_random):
+                buffer.add(selfplay_game(game, adapter, mcts_cfg, rng, noise=explore))
         if args.reanalyze:
             reanalyze(buffer, adapter, mcts_cfg)
         windows = buffer.windows(args.unroll)
         loss = parts = None
         for _ in range(args.train_steps):
             batch = windows.sample(args.batch, gen)
+            if args.mix_replay:
+                # half of every batch comes from the frozen M1.a replay: the capstone's
+                # diverse, blunder-punishing games anchor coverage while self-play sharpens
+                # on-policy play (MuZero Unplugged's offline-data lesson, at nano scale)
+                b2 = frozen.sample(args.batch, gen)
+                batch = {k: torch.cat([batch[k][: args.batch // 2], b2[k][: args.batch // 2]])
+                         for k in batch}
             loss, parts = unrolled_loss(net, batch)
             opt.zero_grad()
             loss.backward()
@@ -382,6 +430,17 @@ def main(argv=None):
                     help="M1.g: offline value-blind run (policy is the latent's only teacher)")
     ap.add_argument("--init-from", type=Path, default=None,
                     help="--full: warm-start the net from an offline (M1.d) checkpoint")
+    ap.add_argument("--vs-random-frac", type=float, default=0.0,
+                    help="--full: fraction of new games played against a random mover "
+                         "(search-minted pi targets on off-policy trajectories)")
+    ap.add_argument("--mix-replay", action="store_true",
+                    help="--full: blend the frozen M1.a replay into every training batch")
+    ap.add_argument("--noise-frac", type=float, default=0.25,
+                    help="--full: root Dirichlet mix-in; 0.25 is the AlphaZero constant "
+                         "for long games, brutal at tic-tac-toe's 5-9 plies")
+    ap.add_argument("--explore-frac", type=float, default=0.5,
+                    help="--full: fraction of iters with root Dirichlet noise on; after "
+                         "that, self-play cools to honest best play (openings still vary)")
     args = ap.parse_args(argv)
     if args.full:
         train_full(args)
