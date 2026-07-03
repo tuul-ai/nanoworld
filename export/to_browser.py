@@ -119,13 +119,68 @@ def export_muzero(args):
         print(f"wrote {p.relative_to(REPO_ROOT)}")
 
 
+def export_deck_bundle(deck_dir: Path, ckpt: Path):
+    """Everything the deck's Module 1 labs consume, in one directory:
+    - weights_final/iter_*/capstone.json (from export_muzero's out dir)
+    - lab-engine.js: forward.js + search.js concatenated, import/export stripped,
+      exposed as window.NanoMuZero (the deck is a single file; labs lazy-load this)
+    - replay_slice.json: 60 games from the frozen replay (watch-it-learn + hgf-io truth)
+    - drift_curves.json + probe_latents.json (subsampled) for the 1.4/1.5 widgets
+    """
+    import numpy as np
+
+    from nano_muzero import baseline
+
+    deck_dir.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / "muzero"
+    for f in out.glob("weights_*.json"):
+        (deck_dir / f.name).write_text(f.read_text())
+
+    js = []
+    for name in ("forward.js", "search.js"):
+        t = (REPO_ROOT / "export" / "js" / name).read_text()
+        t = t.replace('import { AlphaZeroJS, MuZeroJS } from "./forward.js";', "")
+        t = t.replace("export function", "function").replace("export const", "const")
+        t = t.replace("export class", "class")
+        js.append(t)
+    js.append("window.NanoMuZero = { linear, ACTS, mlpForward, rescaleLatent, MuZeroJS, "
+              "AlphaZeroJS, TTT, MuZeroCfg, capstoneEquivalent, runMCTS, MuZeroModelJS, "
+              "OracleModelJS, runCapstoneMCTS };")
+    (deck_dir / "lab-engine.js").write_text("\n".join(js))
+
+    data = baseline.validate_replay(baseline.REPLAY_PATH)
+    keep = data["game_id"][:] < 60
+    slice_ = {k: data[k][:][keep].tolist() for k in ("board", "to_play", "action", "z", "game_id", "move_idx")}
+    slice_["pi"] = np.round(data["pi"][:][keep], 4).tolist()
+    (deck_dir / "replay_slice.json").write_text(json.dumps(slice_))
+
+    drift = REPO_ROOT / "data" / "eval" / "drift_curves.json"
+    if drift.exists():
+        (deck_dir / "drift_curves.json").write_text(drift.read_text())
+    probe = REPO_ROOT / "data" / "eval" / "probe_latents.npz"
+    if probe.exists():
+        d = np.load(probe)
+        idx = np.arange(0, len(d["obs"]), max(1, len(d["obs"]) // 800))
+        (deck_dir / "probe_latents.json").write_text(json.dumps({
+            "labels": d["labels"][idx].tolist(),
+            "z": d["z"][idx].tolist(),
+            "latents_off": np.round(d["latents_off"][idx], 5).tolist(),
+            "latents_on": np.round(d["latents_on"][idx], 5).tolist(),
+        }))
+    print(f"deck bundle -> {deck_dir}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--module", choices=["muzero"], required=True)
     ap.add_argument("--ckpt", type=Path,
                     default=REPO_ROOT / "data" / "ckpts" / "muzero_selfplay.pt")
+    ap.add_argument("--deck", type=Path, default=None,
+                    help="also write the deck asset bundle to this directory")
     args = ap.parse_args(argv)
     export_muzero(args)
+    if args.deck:
+        export_deck_bundle(args.deck, args.ckpt)
 
 
 if __name__ == "__main__":
