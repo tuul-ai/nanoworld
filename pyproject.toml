@@ -20,5 +20,5 @@ build-backend = "setuptools.build_meta"
 packages = ["shared", "envs", "data", "nano_muzero", "nano_dreamer", "nano_jepa", "nano_genie", "export"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "envs"]
 markers = ["smoke: smoke-train tests, run before any Modal spend"]
